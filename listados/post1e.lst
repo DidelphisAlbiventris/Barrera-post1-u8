@@ -1,0 +1,240 @@
+     1                                  ; Johan Barrera - 1152538 - Arquitectura de computadores - Unidad 8
+     2                                  ; Ejecutable DOS COM de 16 bits, compatible con instrucciones 8086.
+     3                                  ; Ensamblar desde la raiz: nasm -f bin post1e.asm -o post1e.com
+     4                                  bits 16
+     5                                  cpu 8086
+     6                                  org 100h
+     7                                  %include "include/macros.inc"
+     1                              <1> ; Instantanea de 14 bytes: AX,BX,CX,DX,SI,DI,FLAGS.
+     2                              <1> ; PUSHF/POP memoria y MOV preservan los flags: seguro entre ADD y ADC.
+     3                              <1> %macro SNAP 1
+     4                              <1>     pushf
+     5                              <1>     pop word [%1+12]
+     6                              <1>     mov [%1], ax
+     7                              <1>     mov [%1+2], bx
+     8                              <1>     mov [%1+4], cx
+     9                              <1>     mov [%1+6], dx
+    10                              <1>     mov [%1+8], si
+    11                              <1>     mov [%1+10], di
+    12                              <1> %endmacro
+     8 00000000 EB39                    jmp inicio
+     9 00000002 686F6C612C206D756E-     origen db 'hola, mundo!',0
+     9 0000000B 646F2100           
+    10                                  longitud equ $-origen
+    11 0000000F A5                      borde_antes db 0A5h
+    12 00000010 00<rep Dh>              destino times longitud db 0
+    13 0000001D 5A                      borde_despues db 5Ah
+    14 0000001E 00<rep Eh>              estado times 14 db 0
+    15 0000002C 5472616E73666F726D-     msg db 'Transformado: $'
+    15 00000035 61646F3A2024       
+    16                                  inicio:
+    17 0000003B 0E                          push cs
+    18 0000003C 1F                          pop ds
+    19 0000003D 8CD8                        mov ax, ds
+    20 0000003F 8EC0                        mov es, ax
+    21 00000041 FC                          cld
+    22 00000042 E84E00                      call encabezado
+    23 00000045 BE[0200]                    mov si, origen
+    24 00000048 BF[1000]                    mov di, destino
+    25 0000004B B90D00                      mov cx, longitud
+    26 0000004E FC                          cld
+    27 0000004F E30E                        jcxz cp_transformado
+    28                                  bucle_transformar:
+    29 00000051 AC                          lodsb
+    30 00000052 3C61                        cmp al, 'a'
+    31 00000054 7206                        jb escribir
+    32 00000056 3C7A                        cmp al, 'z'
+    33 00000058 7702                        ja escribir
+    34 0000005A 2C20                        sub al, 20h
+    35                                  escribir:
+    36 0000005C AA                          stosb
+    37 0000005D E2F2                        loop bucle_transformar
+    38                                  cp_transformado:
+    39                                      SNAP estado
+     4 0000005F 9C                  <1>  pushf
+     5 00000060 8F06[2A00]          <1>  pop word [%1+12]
+     6 00000064 A3[1E00]            <1>  mov [%1], ax
+     7 00000067 891E[2000]          <1>  mov [%1+2], bx
+     8 0000006B 890E[2200]          <1>  mov [%1+4], cx
+     9 0000006F 8916[2400]          <1>  mov [%1+6], dx
+    10 00000073 8936[2600]          <1>  mov [%1+8], si
+    11 00000077 893E[2800]          <1>  mov [%1+10], di
+    40 0000007B BA[2C00]                    mov dx, msg
+    41 0000007E E81900                      call texto_dos
+    42 00000081 BE[1000]                    mov si, destino
+    43 00000084 E81A00                      call texto_cero
+    44 00000087 E82C00                      call nueva_linea
+    45 0000008A BE[1E00]                    mov si, estado
+    46 0000008D E8A600                      call mostrar_estado
+    47 00000090 E9DB00                      jmp pausa_salir
+    48                                  
+    49                                  %include "include/comun.inc"
+     1                              <1> ; Servicios compartidos: siempre preservar los registros de entrada.
+     2                              <1> ; Las cadenas didacticas terminan en NUL; no se envian a DOS AH=09h.
+     3                              <1> encabezado:
+     4 00000093 BA[7D01]            <1>     mov dx, identidad
+     5 00000096 E80100              <1>     call texto_dos
+     6 00000099 C3                  <1>     ret
+     7                              <1> texto_dos:                    ; DS:DX -> cadena terminada en '$'
+     8 0000009A 50                  <1>     push ax
+     9 0000009B B409                <1>     mov ah, 09h
+    10 0000009D CD21                <1>     int 21h
+    11 0000009F 58                  <1>     pop ax
+    12 000000A0 C3                  <1>     ret
+    13                              <1> texto_cero:                   ; DS:SI -> cadena terminada en 0
+    14 000000A1 50                  <1>     push ax
+    15 000000A2 52                  <1>     push dx
+    16 000000A3 56                  <1>     push si
+    17 000000A4 FC                  <1>     cld
+    18                              <1> .siguiente:
+    19 000000A5 AC                  <1>     lodsb
+    20 000000A6 84C0                <1>     test al, al
+    21 000000A8 7408                <1>     jz .fin
+    22 000000AA 88C2                <1>     mov dl, al
+    23 000000AC B402                <1>     mov ah, 02h
+    24 000000AE CD21                <1>     int 21h
+    25 000000B0 EBF3                <1>     jmp .siguiente
+    26                              <1> .fin:
+    27 000000B2 5E                  <1>     pop si
+    28 000000B3 5A                  <1>     pop dx
+    29 000000B4 58                  <1>     pop ax
+    30 000000B5 C3                  <1>     ret
+    31                              <1> nueva_linea:
+    32 000000B6 52                  <1>     push dx
+    33 000000B7 BA[C701]            <1>     mov dx, crlf
+    34 000000BA E8DDFF              <1>     call texto_dos
+    35 000000BD 5A                  <1>     pop dx
+    36 000000BE C3                  <1>     ret
+    37                              <1> caracter_dos:                 ; DL -> caracter, preserva AX
+    38 000000BF 50                  <1>     push ax
+    39 000000C0 B402                <1>     mov ah, 02h
+    40 000000C2 CD21                <1>     int 21h
+    41 000000C4 58                  <1>     pop ax
+    42 000000C5 C3                  <1>     ret
+    43                              <1> imprimirAX:                   ; AX sin signo -> decimal, incluido cero
+    44 000000C6 50                  <1>     push ax
+    45 000000C7 53                  <1>     push bx
+    46 000000C8 51                  <1>     push cx
+    47 000000C9 52                  <1>     push dx
+    48 000000CA BB0A00              <1>     mov bx, 10
+    49 000000CD 31C9                <1>     xor cx, cx
+    50                              <1> .dividir:
+    51 000000CF 31D2                <1>     xor dx, dx
+    52 000000D1 F7F3                <1>     div bx
+    53 000000D3 52                  <1>     push dx
+    54 000000D4 41                  <1>     inc cx
+    55 000000D5 85C0                <1>     test ax, ax
+    56 000000D7 75F6                <1>     jnz .dividir
+    57                              <1> .emitir:
+    58 000000D9 5A                  <1>     pop dx
+    59 000000DA 80C230              <1>     add dl, '0'
+    60 000000DD E8DFFF              <1>     call caracter_dos
+    61 000000E0 E2F7                <1>     loop .emitir
+    62 000000E2 5A                  <1>     pop dx
+    63 000000E3 59                  <1>     pop cx
+    64 000000E4 5B                  <1>     pop bx
+    65 000000E5 58                  <1>     pop ax
+    66 000000E6 C3                  <1>     ret
+    67                              <1> hex_word:                     ; AX -> cuatro digitos, conserva registros
+    68 000000E7 50                  <1>     push ax
+    69 000000E8 53                  <1>     push bx
+    70 000000E9 51                  <1>     push cx
+    71 000000EA 52                  <1>     push dx
+    72 000000EB 89C3                <1>     mov bx, ax
+    73 000000ED B90400              <1>     mov cx, 4
+    74                              <1> .digito:
+    75 000000F0 D1C3                <1>     rol bx, 1
+    76 000000F2 D1C3                <1>     rol bx, 1
+    77 000000F4 D1C3                <1>     rol bx, 1
+    78 000000F6 D1C3                <1>     rol bx, 1
+    79 000000F8 88DA                <1>     mov dl, bl
+    80 000000FA 80E20F              <1>     and dl, 0Fh
+    81 000000FD 80FA09              <1>     cmp dl, 9
+    82 00000100 7605                <1>     jbe .decimal
+    83 00000102 80C237              <1>     add dl, 'A'-10
+    84 00000105 EB03                <1>     jmp .mostrar
+    85                              <1> .decimal:
+    86 00000107 80C230              <1>     add dl, '0'
+    87                              <1> .mostrar:
+    88 0000010A E8B2FF              <1>     call caracter_dos
+    89 0000010D E2E1                <1>     loop .digito
+    90 0000010F 5A                  <1>     pop dx
+    91 00000110 59                  <1>     pop cx
+    92 00000111 5B                  <1>     pop bx
+    93 00000112 58                  <1>     pop ax
+    94 00000113 C3                  <1>     ret
+    95                              <1> bcd_dos:                      ; AL BCD empaquetado valido -> dos digitos
+    96 00000114 50                  <1>     push ax
+    97 00000115 53                  <1>     push bx
+    98 00000116 51                  <1>     push cx
+    99 00000117 52                  <1>     push dx
+   100 00000118 88C3                <1>     mov bl, al
+   101 0000011A B104                <1>     mov cl, 4
+   102 0000011C D2E8                <1>     shr al, cl
+   103 0000011E 88C2                <1>     mov dl, al
+   104 00000120 80C230              <1>     add dl, '0'
+   105 00000123 E899FF              <1>     call caracter_dos
+   106 00000126 88DA                <1>     mov dl, bl
+   107 00000128 80E20F              <1>     and dl, 0Fh
+   108 0000012B 80C230              <1>     add dl, '0'
+   109 0000012E E88EFF              <1>     call caracter_dos
+   110 00000131 5A                  <1>     pop dx
+   111 00000132 59                  <1>     pop cx
+   112 00000133 5B                  <1>     pop bx
+   113 00000134 58                  <1>     pop ax
+   114 00000135 C3                  <1>     ret
+   115                              <1> mostrar_estado:               ; DS:SI -> instantanea AX,BX,CX,DX,SI,DI,FLAGS
+   116 00000136 50                  <1>     push ax
+   117 00000137 53                  <1>     push bx
+   118 00000138 51                  <1>     push cx
+   119 00000139 52                  <1>     push dx
+   120 0000013A 56                  <1>     push si
+   121 0000013B 57                  <1>     push di
+   122 0000013C BF[EA01]            <1>     mov di, rotulos
+   123 0000013F B90700              <1>     mov cx, 7
+   124                              <1> .campo:
+   125 00000142 8A15                <1>     mov dl, [di]
+   126 00000144 E878FF              <1>     call caracter_dos
+   127 00000147 8A5501              <1>     mov dl, [di+1]
+   128 0000014A E872FF              <1>     call caracter_dos
+   129 0000014D B23D                <1>     mov dl, '='
+   130 0000014F E86DFF              <1>     call caracter_dos
+   131 00000152 8B04                <1>     mov ax, [si]
+   132 00000154 E890FF              <1>     call hex_word
+   133 00000157 B220                <1>     mov dl, ' '
+   134 00000159 E863FF              <1>     call caracter_dos
+   135 0000015C 83C602              <1>     add si, 2
+   136 0000015F 83C702              <1>     add di, 2
+   137 00000162 E2DE                <1>     loop .campo
+   138 00000164 E84FFF              <1>     call nueva_linea
+   139 00000167 5F                  <1>     pop di
+   140 00000168 5E                  <1>     pop si
+   141 00000169 5A                  <1>     pop dx
+   142 0000016A 59                  <1>     pop cx
+   143 0000016B 5B                  <1>     pop bx
+   144 0000016C 58                  <1>     pop ax
+   145 0000016D C3                  <1>     ret
+   146                              <1> pausa_salir:
+   147 0000016E BA[CA01]            <1>     mov dx, pausa
+   148 00000171 E826FF              <1>     call texto_dos
+   149 00000174 B407                <1>     mov ah, 07h
+   150 00000176 CD21                <1>     int 21h
+   151                              <1> salir:
+   152 00000178 B8004C              <1>     mov ax, 4C00h
+   153 0000017B CD21                <1>     int 21h
+   154 0000017D 4A6F68616E20426172- <1> identidad db 'Johan Barrera | Cod: 1152538',13,10
+   154 00000186 72657261207C20436F- <1>
+   154 0000018F 643A20313135323533- <1>
+   154 00000198 380D0A              <1>
+   155 0000019B 417271756974656374- <1>           db 'Arquitectura de computadores | Unidad 8',13,10,13,10,'$'
+   155 000001A4 75726120646520636F- <1>
+   155 000001AD 6D70757461646F7265- <1>
+   155 000001B6 73207C20556E696461- <1>
+   155 000001BF 6420380D0A0D0A24    <1>
+   156 000001C7 0D0A24              <1> crlf db 13,10,'$'
+   157 000001CA 0D0A50756C73652075- <1> pausa db 13,10,'Pulse una tecla para salir.',13,10,'$'
+   157 000001D3 6E61207465636C6120- <1>
+   157 000001DC 706172612073616C69- <1>
+   157 000001E5 722E0D0A24          <1>
+   158 000001EA 415842584358445853- <1> rotulos db 'AXBXCXDXSIDIFL'
+   158 000001F3 494449464C          <1>
